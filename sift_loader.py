@@ -3,6 +3,10 @@ import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 import json
+import traceback 
+import sys
+
+from clustering import DBSCANClustering
 
 # https://stackoverflow.com/a/30230738
 def load_images_from_folder(folder):
@@ -114,86 +118,29 @@ def match_images(image1, image2, render_output=False):
         cv2.imshow("Result", img3);cv2.waitKey();cv2.destroyAllWindows()
     return good_matches
 
-# Get the neighbors of a match (given as point_index, the index of the match)
-# in point_matches by measuring the distances of the first points (corresponding
-# to the "left" image) plus the second points (corresponding to the "right" image)
-def get_neighbors(point_matches, distance_limit, point_index):
-    neighbors = []
-    start_point = point_matches[point_index]
-    for match_index in range(len(point_matches)):
-        match = point_matches[match_index]
-        # The distance between points in the original image (left)
-        left_distance = ( (match[0][0] - start_point[0][0]) ** 2 + (match[0][1] - start_point[0][1]) ** 2 ) ** (1/2)
-        # distance between their neighbors
-        right_distance = ((match[1][0] - start_point[1][0]) ** 2 + (match[1][1] - start_point[1][1]) ** 2) ** (1/2)
-        if left_distance + right_distance < distance_limit:
-            neighbors.append(match_index)
-    return neighbors
-        
-
-# Do a unique type of DBSCAN clustering. See get_neighbors as
-# to what makes it interesting
-def DBSCANClustering(point_matches, distance_limit, min_points):
-
-    # labels[i] will be the cluster label of point_match index i.
-    # 0 will be an unlabeled point. -1 will be noise
-    labels = []
-    for _ in range(len(point_matches)):
-        labels.append(0)
-
-    current_cluster = 0
-    for i in range(len(point_matches)):
-        point_match = point_matches[i]
-        if labels[i] != 0:
-            continue
-        neighbors = get_neighbors(point_matches, distance_limit, i)
-        if len(neighbors) < min_points: 
-            labels[i] = -1
-            continue
-        
-        current_cluster += 1
-        labels[i] = current_cluster
-        neighbors.remove(i)
-
-        current_neighbor = 0
-        while current_neighbor < len(neighbors):
-            q_match_index = neighbors[current_neighbor]
-            if labels[q_match_index] == -1:
-                labels[q_match_index] == current_cluster
-            if labels[q_match_index] != 0:
-                current_neighbor +=1
-                continue
-            labels[q_match_index] = current_cluster
-
-            neighbors_to_add = get_neighbors(point_matches, distance_limit, q_match_index)
-            if len(neighbors_to_add) >= min_points:
-
-                # add the new neighbors that are not already in neighbors.
-                for n in neighbors_to_add:
-                    if n not in neighbors:
-                        neighbors.append(n)
-            current_neighbor +=1
-
-    return labels
-        
-
 # Given a clustered set of matches, get an image patch contained within
 # the cluster. We can then check this against the other images.
-def get_image_patches_for_cluster(cluster_matches, image_1, image_2, margin = 0):
+# margin is the area around the bounding box that we include. It is 
+# given as percentage of min(img_height, img_width)
+def get_image_patches_for_cluster(cluster_matches, image_1, image_2, margin_percentage = 0):
 
+    # left margin
+    left_margin = int(margin_percentage * min(image_1.shape[0], image_1.shape[1]))
     # get bounds for left image
     left_min_x = int(min(cluster_matches, key=lambda k:k[0][0])[0][0])
     left_max_x = int(max(cluster_matches, key=lambda k:k[0][0])[0][0])
     left_min_y = int(min(cluster_matches, key=lambda k:k[0][1])[0][1])
     left_max_y = int(max(cluster_matches, key=lambda k:k[0][1])[0][1])
     # factor in margin
-    left_min_x = max(left_min_x-margin, 0)
-    left_max_x = min(left_max_x+margin, image_1.shape[1])
-    left_min_y = max(left_min_y-margin, 0)
-    left_max_y = min(left_max_y+margin, image_1.shape[0])
+    left_min_x = max(left_min_x-left_margin, 0)
+    left_max_x = min(left_max_x+left_margin, image_1.shape[1])
+    left_min_y = max(left_min_y-left_margin, 0)
+    left_max_y = min(left_max_y+left_margin, image_1.shape[0])
     #opencv does height then width. (took me some insanely annoying debugging to discover)
     cropped_image_1 = image_1[left_min_y:left_max_y, left_min_x:left_max_x]
 
+    # right margin
+    right_margin = int(margin_percentage * min(image_1.shape[0], image_1.shape[1]))
     # get bounds for right image
     right_min_x = int(min(cluster_matches, key=lambda k:k[1][0])[1][0])
     right_max_x = int(max(cluster_matches, key=lambda k:k[1][0])[1][0])
@@ -201,10 +148,10 @@ def get_image_patches_for_cluster(cluster_matches, image_1, image_2, margin = 0)
     right_max_y = int(max(cluster_matches, key=lambda k:k[1][1])[1][1])
 
     # factor in margin
-    right_min_x = max(right_min_x-margin, 0)
-    right_max_x = min(right_max_x+margin, image_2.shape[1])
-    right_min_y = max(right_min_y-margin, 0)
-    right_max_y = min(right_max_y+margin, image_2.shape[0])
+    right_min_x = max(right_min_x-right_margin, 0)
+    right_max_x = min(right_max_x+right_margin, image_2.shape[1])
+    right_min_y = max(right_min_y-right_margin, 0)
+    right_max_y = min(right_max_y+right_margin, image_2.shape[0])
 
     cropped_image_2 = image_2[right_min_y:right_max_y, right_min_x:right_max_x]
 
@@ -222,6 +169,7 @@ def add_cluster_annotations(match_points, cluster_labels, image):
 def extract_candidate_swatches():
     images = load_images()
     image_swatches = []
+    confidences = []
     print(len(images))
     for i in range(len(images)):
         for j in range(i, len(images)):
@@ -244,14 +192,16 @@ def extract_candidate_swatches():
 
                         # get image patches for each cluster.
                         for cluster in clusters:
-                            if len(cluster) > 1:
-                                image_patch_1, image_patch_2 = get_image_patches_for_cluster(cluster, left_image, right_image, margin = 100)
+                            if len(cluster) > 9:
+                                image_patch_1, image_patch_2 = get_image_patches_for_cluster(cluster, left_image, right_image, margin_percentage = 0.075)
                                 # cv2.imshow("Result", image_patch_1);cv2.waitKey();cv2.destroyAllWindows()
                                 # cv2.imshow("Result", image_patch_2);cv2.waitKey();cv2.destroyAllWindows()
                                 image_swatches += [image_patch_1, image_patch_2]
+                                print('for ' + str(len(image_swatches)-1) + ' we got confidence ' + str(len(cluster)))
                 except Exception as e:
                     print("SOMETHING WENT WRONG")
                     print(e)
+                    traceback.print_exception(*sys.exc_info())
     return image_swatches
 
 
