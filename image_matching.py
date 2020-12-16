@@ -41,7 +41,7 @@ def lewis_kanade_approach(image1, image2):
 
 
 # given two images, return a set of matching points based on
-# Sift keypoints w/ FLANN matching. 
+# Sift keypoints w/ FLANN matching.
 def match_images(image1, image2, render_output=False):
     image1 = cv2.cvtColor(image1,cv2.COLOR_BGR2GRAY)
     image2 = cv2.cvtColor(image2,cv2.COLOR_BGR2GRAY)
@@ -62,7 +62,6 @@ def match_images(image1, image2, render_output=False):
     flann = cv2.FlannBasedMatcher(index_params,search_params)
 
     matches = flann.knnMatch(descriptors_1,descriptors_2,k=2)
-
     # Need to draw only good matches, so create a mask
     matchesMask = [[0,0] for i in range(len(matches))]
 
