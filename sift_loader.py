@@ -61,7 +61,7 @@ def lewis_kanade_approach(image1, image2):
 
 # given two images, return a set of matching points based on
 # Sift keypoints w/ FLANN matching. 
-def match_images(image1, image2):
+def match_images(image1, image2, render_output=False):
     image1 = cv2.cvtColor(image1,cv2.COLOR_BGR2GRAY)
     image2 = cv2.cvtColor(image2,cv2.COLOR_BGR2GRAY)
 
@@ -95,7 +95,6 @@ def match_images(image1, image2):
             # https://stackoverflow.com/questions/46607647/sift-feature-matching-point-coordinates
             point1 = keypoints_1[m.queryIdx].pt
             point2 = keypoints_2[m.trainIdx].pt
-            print(str(point1) + '--->' + str(point2))
             good_matches.append([point1, point2])
      
             ## Draw pairs in purple, to make sure the result is ok
@@ -111,7 +110,8 @@ def match_images(image1, image2):
     img3 = cv2.drawMatchesKnn(image1,keypoints_1,image2,keypoints_2,matches,None,**draw_params)
 
     #plt.imshow(img3,),plt.show()
-    cv2.imshow("Result", img3);cv2.waitKey();cv2.destroyAllWindows()
+    if render_output:
+        cv2.imshow("Result", img3);cv2.waitKey();cv2.destroyAllWindows()
     return good_matches
 
 # Get the neighbors of a match (given as point_index, the index of the match)
@@ -180,19 +180,17 @@ def DBSCANClustering(point_matches, distance_limit, min_points):
 # Given a clustered set of matches, get an image patch contained within
 # the cluster. We can then check this against the other images.
 def get_image_patches_for_cluster(cluster_matches, image_1, image_2, margin = 0):
-    print(image_1.shape)
+
     # get bounds for left image
     left_min_x = int(min(cluster_matches, key=lambda k:k[0][0])[0][0])
     left_max_x = int(max(cluster_matches, key=lambda k:k[0][0])[0][0])
     left_min_y = int(min(cluster_matches, key=lambda k:k[0][1])[0][1])
     left_max_y = int(max(cluster_matches, key=lambda k:k[0][1])[0][1])
-    print([left_min_y,left_max_y, left_min_x,left_max_x])
     # factor in margin
     left_min_x = max(left_min_x-margin, 0)
     left_max_x = min(left_max_x+margin, image_1.shape[1])
     left_min_y = max(left_min_y-margin, 0)
     left_max_y = min(left_max_y+margin, image_1.shape[0])
-    print([left_min_y,left_max_y, left_min_x,left_max_x])
     #opencv does height then width. (took me some insanely annoying debugging to discover)
     cropped_image_1 = image_1[left_min_y:left_max_y, left_min_x:left_max_x]
 
@@ -221,43 +219,77 @@ def add_cluster_annotations(match_points, cluster_labels, image):
         cv2.circle(image, (int(match_points[i][0][0]),int(match_points[i][0][1])), 7, (jump*cluster_num,jump*cluster_num,255-(jump*cluster_num)), -1)
     return image
 
-if __name__ == "__main__":
+def extract_candidate_swatches():
     images = load_images()
-    #cv2.imshow("Result", images[2]);cv2.waitKey();cv2.destroyAllWindows()
+    image_swatches = []
+    print(len(images))
+    for i in range(len(images)):
+        for j in range(i, len(images)):
+            if i != j:
+                try:
+                    print(i)
+                    left_image = images[i]
+                    right_image = images[j]
+                    pair_match_points = match_images(left_image, right_image)
+                    cluster_labels = DBSCANClustering(pair_match_points, 200, 4)
+                    if len(cluster_labels) > 0:
+                        # array of array with clustered point matches
+                        clusters = []
+                        for _ in range(max(cluster_labels)+1):
+                            clusters.append([])
+                        for k in range(len(pair_match_points)):
+                            cluster_label = cluster_labels[k]
+                            if cluster_label > 0:
+                                clusters[cluster_label].append(pair_match_points[k])
 
-    left_image = images[5]
-    right_image = images[6]
+                        # get image patches for each cluster.
+                        for cluster in clusters:
+                            if len(cluster) > 1:
+                                image_patch_1, image_patch_2 = get_image_patches_for_cluster(cluster, left_image, right_image, margin = 100)
+                                # cv2.imshow("Result", image_patch_1);cv2.waitKey();cv2.destroyAllWindows()
+                                # cv2.imshow("Result", image_patch_2);cv2.waitKey();cv2.destroyAllWindows()
+                                image_swatches += [image_patch_1, image_patch_2]
+                except Exception as e:
+                    print("SOMETHING WENT WRONG")
+                    print(e)
+    return image_swatches
+
+
+
+if __name__ == "__main__":
+    image_swatches = extract_candidate_swatches()
+    for i in range(len(image_swatches)):
+        cv2.imwrite('./swatch_output/out_' + str(i) + '.jpg', image_swatches[i])
+
     # with open('inter_data.json', 'w') as json_file:
-    #     match_points = match_images(left_image, right_image)
+    #     match_points = match_images(left_image, right_image, True)
     #     json.dump(match_points, json_file)
 
-    with open('inter_data.json') as json_file:
-        match_points = json.load(json_file)
-        cluster_labels = DBSCANClustering(match_points, 200, 4)
-        edit_image = left_image
+    # with open('inter_data.json') as json_file:
+    #     match_points = json.load(json_file)
+    #     cluster_labels = DBSCANClustering(match_points, 200, 4)
+    #     edit_image = left_image
 
-        result_image = add_cluster_annotations(match_points, cluster_labels, edit_image)
-        cv2.imshow("Result", result_image);cv2.waitKey();cv2.destroyAllWindows()
+    #     result_image = add_cluster_annotations(match_points, cluster_labels, edit_image)
+    #     cv2.imshow("Result", result_image);cv2.waitKey();cv2.destroyAllWindows()
 
         
-        # array of array with clustered point matches
-        clusters = []
-        for i in range(max(cluster_labels)+1):
-            clusters.append([])
-        for i in range(len(match_points)):
-            cluster_label = cluster_labels[i]
-            if cluster_label > 0:
-                clusters[cluster_label].append(match_points[i])
+    #     # array of array with clustered point matches
+    #     clusters = []
+    #     for i in range(max(cluster_labels)+1):
+    #         clusters.append([])
+    #     for i in range(len(match_points)):
+    #         cluster_label = cluster_labels[i]
+    #         if cluster_label > 0:
+    #             clusters[cluster_label].append(match_points[i])
 
-        # get image patches for each cluster.
-        for cluster in clusters:
-            if len(cluster) > 1:
-                image_patch_1, image_patch_2 = get_image_patches_for_cluster(cluster, left_image, right_image, margin = 100)
-                cv2.imshow("Result", image_patch_1);cv2.waitKey();cv2.destroyAllWindows()
-                cv2.imshow("Result", image_patch_2);cv2.waitKey();cv2.destroyAllWindows()
+    #     # get image patches for each cluster.
+    #     for cluster in clusters:
+    #         if len(cluster) > 1:
+    #             image_patch_1, image_patch_2 = get_image_patches_for_cluster(cluster, left_image, right_image, margin = 100)
+    #             cv2.imshow("Result", image_patch_1);cv2.waitKey();cv2.destroyAllWindows()
+    #             cv2.imshow("Result", image_patch_2);cv2.waitKey();cv2.destroyAllWindows()
 
-
-    #lewis_kanade_approach(images[5], images[1])
     
 
 
