@@ -1,4 +1,7 @@
 *.json
 **/*.jpg
+**/*.bmp
+**/*.png
+**/*.tif
 __pycache__/
 .DS_Store

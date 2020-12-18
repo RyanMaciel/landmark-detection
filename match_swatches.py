@@ -37,13 +37,13 @@ parser.add_argument(
     "--test_directory",
     default='./test_image_set/',
     type=str,
-    help="Where to get images to train on (look for frequent co-occurances)",
+    help="Where to get images to test on (look for frequent co-occurances)",
 )
 parser.add_argument(
     "--swatch_directory",
     default='./swatch_output/',
     type=str,
-    help="Where to output image swatches that we think co-occur frequently.",
+    help="Where to get image swatches that we think co-occur frequently.",
 )
 parser.add_argument(
     "--render",

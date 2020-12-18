@@ -67,6 +67,12 @@ parser = argparse.ArgumentParser(
     description="Find similar patches in image set using SIFT and DBSCAN"
 )
 parser.add_argument(
+    "--num_swatches",
+    default=4,
+    type=int,
+    help="The number of max confidence swatches to extract",
+)
+parser.add_argument(
     "--train_directory",
     default='./train_image_set/',
     type=str,
@@ -94,7 +100,7 @@ if __name__ == "__main__":
     image_set_directory = args.train_directory
 
     images, _ = load_images(image_set_directory)
-    image_swatches = extract_candidate_swatches(images, 3, render_output=args.render)
+    image_swatches = extract_candidate_swatches(images, args.num_swatches, render_output=args.render)
 
     # clear output folder
     for filename in os.listdir(swatch_directory):
