@@ -2,7 +2,9 @@
 # Get the neighbors of a match (given as point_index, the index of the match)
 # in point_matches by measuring the distances of the first points (corresponding
 # to the "left" image) plus the second points (corresponding to the "right" image)
-def get_neighbors(point_matches, distance_limit, point_index):
+def get_neighbors(point_matches, distance_limit, point_index, image_1_shape, image_2_shape):
+    scaled_distance_left = distance_limit * min(image_1_shape[0], image_1_shape[1])
+    scaled_distance_right = distance_limit * min(image_2_shape[0], image_2_shape[1]) 
     neighbors = []
     start_point = point_matches[point_index]
     for match_index in range(len(point_matches)):
@@ -11,14 +13,16 @@ def get_neighbors(point_matches, distance_limit, point_index):
         left_distance = ( (match[0][0] - start_point[0][0]) ** 2 + (match[0][1] - start_point[0][1]) ** 2 ) ** (1/2)
         # distance between their neighbors
         right_distance = ((match[1][0] - start_point[1][0]) ** 2 + (match[1][1] - start_point[1][1]) ** 2) ** (1/2)
-        if left_distance + right_distance < distance_limit:
+        if left_distance < scaled_distance_left and right_distance<scaled_distance_right:
             neighbors.append(match_index)
     return neighbors
 
 
 # Do a unique type of DBSCAN clustering. See get_neighbors as
 # to what makes it interesting
-def DBSCANClustering(point_matches, distance_limit, min_points):
+# distance is defined as percentage (0<=distance<=1)of image min(width, height)
+# adapted from psuedocode: https://en.wikipedia.org/wiki/DBSCAN#Algorithm
+def DBSCANClustering(point_matches, distance_limit, min_points, image_1_shape, image_2_shape):
 
     # labels[i] will be the cluster label of point_match index i.
     # 0 will be an unlabeled point. -1 will be noise
@@ -31,7 +35,7 @@ def DBSCANClustering(point_matches, distance_limit, min_points):
         point_match = point_matches[i]
         if labels[i] != 0:
             continue
-        neighbors = get_neighbors(point_matches, distance_limit, i)
+        neighbors = get_neighbors(point_matches, distance_limit, i, image_1_shape, image_2_shape)
         if len(neighbors) < min_points:
             labels[i] = -1
             continue
@@ -50,7 +54,7 @@ def DBSCANClustering(point_matches, distance_limit, min_points):
                 continue
             labels[q_match_index] = current_cluster
 
-            neighbors_to_add = get_neighbors(point_matches, distance_limit, q_match_index)
+            neighbors_to_add = get_neighbors(point_matches, distance_limit, q_match_index, image_1_shape, image_2_shape)
             if len(neighbors_to_add) >= min_points:
 
                 # add the new neighbors that are not already in neighbors.

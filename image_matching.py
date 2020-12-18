@@ -42,7 +42,7 @@ def lewis_kanade_approach(image1, image2):
 
 # given two images, return a set of matching points based on
 # Sift keypoints w/ FLANN matching.
-def match_images(image1, image2, render_output=False):
+def match_images(image1, image2, render_output=False, ratio=0.7, flann_checks = 50):
     image1 = cv2.cvtColor(image1,cv2.COLOR_BGR2GRAY)
     image2 = cv2.cvtColor(image2,cv2.COLOR_BGR2GRAY)
 
@@ -56,8 +56,8 @@ def match_images(image1, image2, render_output=False):
     # FLANN Matching
     # FLANN parameters
     FLANN_INDEX_KDTREE = 0
-    index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
-    search_params = dict(checks=50)   # or pass empty dictionary
+    index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 3)
+    search_params = dict(checks=flann_checks)   # or pass empty dictionary
 
     flann = cv2.FlannBasedMatcher(index_params,search_params)
 
@@ -68,7 +68,7 @@ def match_images(image1, image2, render_output=False):
     good_matches = []
     # ratio test as per Lowe's paper
     for i,(m,n) in enumerate(matches):
-        if m.distance < 0.7*n.distance:
+        if m.distance < ratio*n.distance:
             matchesMask[i]=[1,0]
 
             # Extraction of coordinates detailed here:

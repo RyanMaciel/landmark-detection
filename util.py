@@ -5,13 +5,15 @@ import sys
 # https://stackoverflow.com/a/30230738
 def load_images_from_folder(folder, log_directory):
     images = []
+    file_names = []
     for filename in os.listdir(folder):
         if log_directory:
             print(filename)
         img = cv2.imread(os.path.join(folder,filename))
         if img is not None:
             images.append(img)
-    return images
+            file_names.append(filename)
+    return (images, file_names)
 
 def load_images(directory, log_directory=False):
     return load_images_from_folder(directory, log_directory)
@@ -38,12 +40,17 @@ def max_indices(arr, num_indices):
                 max_indices[min_index] = i
     return max_indices
 
-def add_cluster_annotations(match_points, cluster_labels, image):
+# Add cluster annotations to an image given the matching points and
+# cluster labels in format seen elsewhere.
+# side = 0 if the image given is the "left" image of the match
+# side = 1 if the image given is the "right" image of the match.
+def add_cluster_annotations(match_points, cluster_labels, image, side=0):
     num_classes = max(cluster_labels)
     jump = 255/num_classes
     for i in range(len(match_points)):
         cluster_num = cluster_labels[i]
-        cv2.circle(image, (int(match_points[i][0][0]),int(match_points[i][0][1])), 7, (jump*cluster_num,jump*cluster_num,255-(jump*cluster_num)), -1)
+        if cluster_num > 0:
+            cv2.circle(image, (int(match_points[i][side][0]),int(match_points[i][side][1])), 7, (jump*cluster_num,jump*cluster_num,255-(jump*cluster_num)), -1)
     return image
 
 # Given a clustered set of matches, get an image patch contained within

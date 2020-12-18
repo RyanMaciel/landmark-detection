@@ -4,28 +4,34 @@ import matplotlib.pyplot as plt
 import json
 import traceback
 import sys
+import argparse
+
 
 from clustering import DBSCANClustering
 from image_matching import match_images
-from util import load_images, max_indices, get_image_patches_for_cluster
+from util import load_images, max_indices, get_image_patches_for_cluster, add_cluster_annotations
 
 # Load a subset of the training images and compute all matching clusters
 # From these extract image patches (the areas of the images that we think 
 # co-occur) and return n that we are most confident in (n given num_candidate_matches). 
-def extract_candidate_swatches(images, num_candidate_matches = 4):
+def extract_candidate_swatches(images, num_candidate_matches = 4, render_output = False):
     image_swatches = []
     confidences = []
-    print(len(images))
     for i in range(len(images)):
         for j in range(i, len(images)):
             if i != j:
-                print(i)
                 try:
                     left_image = images[i]
                     right_image = images[j]
-                    pair_match_points = match_images(left_image, right_image)
-                    cluster_labels = DBSCANClustering(pair_match_points, 200, 4)
+                    pair_match_points = match_images(left_image, right_image, render_output=render_output)
+                    cluster_labels = DBSCANClustering(pair_match_points, 0.3, 4, left_image.shape, right_image.shape)
+
                     if len(cluster_labels) > 0:
+                        if render_output and max(cluster_labels) > 0:
+                            output_image = left_image.copy()
+                            result_image = add_cluster_annotations(pair_match_points, cluster_labels, output_image)
+                            cv2.imshow("Result", result_image);cv2.waitKey();cv2.destroyAllWindows()
+
                         # array of array with clustered point matches
                         clusters = []
                         for _ in range(max(cluster_labels)+1):
@@ -49,7 +55,6 @@ def extract_candidate_swatches(images, num_candidate_matches = 4):
                     print(e)
                     traceback.print_exception(*sys.exc_info())
     
-    print(confidences)
     filtered_swatches = []
     max_conf_indices = max_indices(confidences, num_candidate_matches)
     for conf_index in max_conf_indices:
@@ -58,11 +63,38 @@ def extract_candidate_swatches(images, num_candidate_matches = 4):
     return filtered_swatches
 
 
-swatch_directory = './swatch_output/'
-image_set_directory = '../rochester_image_set'
+parser = argparse.ArgumentParser(
+    description="Find similar patches in image set using SIFT and DBSCAN"
+)
+parser.add_argument(
+    "--train_directory",
+    default='./train_image_set/',
+    type=str,
+    help="Where to get images to train on (look for frequent co-occurances)",
+)
+parser.add_argument(
+    "--swatch_directory",
+    default='./swatch_output/',
+    type=str,
+    help="Where to output image swatches that we think co-occur frequently.",
+)
+parser.add_argument(
+    "--render",
+    "--r",
+    default=False,
+    type=bool,
+    help="if we should render progress",
+)
+
+args = parser.parse_args()
+
+
 if __name__ == "__main__":
-    images = load_images(image_set_directory)
-    image_swatches = extract_candidate_swatches(images, 3)
+    swatch_directory = args.swatch_directory
+    image_set_directory = args.train_directory
+
+    images, _ = load_images(image_set_directory)
+    image_swatches = extract_candidate_swatches(images, 3, render_output=args.render)
 
     # clear output folder
     for filename in os.listdir(swatch_directory):
